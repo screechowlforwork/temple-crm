@@ -11,7 +11,7 @@ type DeceasedItem = { id: string; lastName: string; firstName: string; posthumou
 export function useHouseholdOptions() {
   const [options, setOptions] = useState<ComboOption[]>([]);
   useEffect(() => {
-    api.get<HouseholdItem[]>("/api/households").then((data) =>
+    api.get<HouseholdItem[]>("/api/households?lite=1").then((data) =>
       setOptions(
         data.map((h) => ({
           value: h.id,
@@ -43,7 +43,7 @@ export function useEventOptions() {
 export function useDeceasedOptions() {
   const [options, setOptions] = useState<ComboOption[]>([]);
   useEffect(() => {
-    api.get<DeceasedItem[]>("/api/deceased").then((data) =>
+    api.get<DeceasedItem[]>("/api/deceased?lite=1").then((data) =>
       setOptions(
         data.map((d) => ({
           value: d.id,

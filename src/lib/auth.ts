@@ -50,26 +50,18 @@ async function isGoogleEmailAllowed(email: string): Promise<boolean> {
   return ENV_ALLOWED_GOOGLE_EMAILS.includes(normalizedEmail);
 }
 
-async function buildSessionUser(user: {
+function buildSessionUser(user: {
   id: string;
   username: string;
   displayName: string;
-  roleId: string;
+  roleName: string;
   email?: string | null;
-}): Promise<SessionUser | null> {
-  const role = await prisma.role.findUnique({
-    where: { id: user.roleId },
-    select: { name: true },
-  });
-  if (!role) {
-    return null;
-  }
-
+}): SessionUser {
   return {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    roleName: role.name,
+    roleName: user.roleName,
     email: user.email ?? null,
   };
 }
@@ -77,11 +69,18 @@ async function buildSessionUser(user: {
 async function getActiveSessionUserById(userId: string): Promise<SessionUser | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    include: { role: { select: { name: true } } },
   });
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || !user.role) {
     return null;
   }
-  return buildSessionUser(user);
+  return buildSessionUser({
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    roleName: user.role.name,
+    email: user.email,
+  });
 }
 
 async function createUniqueUsernameFromEmail(email: string): Promise<string> {
@@ -123,8 +122,15 @@ async function upsertGoogleUser(params: {
         displayName: params.displayName,
         isActive: true,
       },
+      include: { role: { select: { name: true } } },
     });
-    return buildSessionUser(updated);
+    return buildSessionUser({
+      id: updated.id,
+      username: updated.username,
+      displayName: updated.displayName,
+      roleName: updated.role.name,
+      email: updated.email,
+    });
   }
 
   const username = await createUniqueUsernameFromEmail(params.email);
@@ -139,8 +145,15 @@ async function upsertGoogleUser(params: {
       roleId: staffRole.id,
       isActive: true,
     },
+    include: { role: { select: { name: true } } },
   });
-  return buildSessionUser(created);
+  return buildSessionUser({
+    id: created.id,
+    username: created.username,
+    displayName: created.displayName,
+    roleName: created.role.name,
+    email: created.email,
+  });
 }
 
 const authConfig: NextAuthConfig = {
@@ -195,18 +208,21 @@ const authConfig: NextAuthConfig = {
 
       const user = await prisma.user.findFirst({
         where: { email },
+        include: { role: { select: { name: true } } },
       });
 
-      if (!user || !user.isActive) {
+      if (!user || !user.isActive || !user.role) {
         delete (token as Record<string, unknown>).appUser;
         return token;
       }
 
-      const sessionUser = await buildSessionUser(user);
-      if (!sessionUser) {
-        delete (token as Record<string, unknown>).appUser;
-        return token;
-      }
+      const sessionUser = buildSessionUser({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        roleName: user.role.name,
+        email: user.email,
+      });
 
       (token as Record<string, unknown>).appUser = sessionUser;
       return token;
@@ -229,14 +245,21 @@ export async function authenticateUser(
 ): Promise<SessionUser | null> {
   const user = await prisma.user.findUnique({
     where: { username },
+    include: { role: { select: { name: true } } },
   });
 
-  if (!user || !user.isActive) return null;
+  if (!user || !user.isActive || !user.role) return null;
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
 
-  return buildSessionUser(user);
+  return buildSessionUser({
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    roleName: user.role.name,
+    email: user.email,
+  });
 }
 
 export function createToken(user: SessionUser): string {

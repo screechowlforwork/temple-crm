@@ -6,6 +6,7 @@ import { createAuditLog } from "@/lib/audit";
 export async function GET(req: NextRequest) {
   return withAuth(req, async () => {
     const url = new URL(req.url);
+    const lite = url.searchParams.get("lite") === "1";
     const status = url.searchParams.get("status");
     const contactPriority = url.searchParams.get("contact_priority");
     const hasEmail = url.searchParams.get("has_email");
@@ -27,13 +28,24 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const households = await prisma.household.findMany({
-      where,
-      include: {
-        _count: { select: { deceased: true, transactions: true, tasks: true } },
-      },
-      orderBy: { name: "asc" },
-    });
+    const households = lite
+      ? await prisma.household.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            prefecture: true,
+            city: true,
+          },
+          orderBy: { name: "asc" },
+        })
+      : await prisma.household.findMany({
+          where,
+          include: {
+            _count: { select: { deceased: true, transactions: true, tasks: true } },
+          },
+          orderBy: { name: "asc" },
+        });
 
     return jsonResponse(households);
   });

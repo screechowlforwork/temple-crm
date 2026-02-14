@@ -10,6 +10,49 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const householdId = url.searchParams.get("household_id");
     const q = url.searchParams.get("q");
+    const lite = url.searchParams.get("lite") === "1";
+    const summary = url.searchParams.get("summary") === "1";
+    const ids = (url.searchParams.get("ids") ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (summary) {
+      if (ids.length === 0) {
+        return jsonResponse([]);
+      }
+
+      const deceasedForSummary = await prisma.deceased.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          memorialInstances: {
+            select: {
+              id: true,
+              year: true,
+              dueDate: true,
+              completedAt: true,
+            },
+            orderBy: { dueDate: "asc" },
+          },
+        },
+      });
+
+      const summaryItems = deceasedForSummary.map((d) => {
+        const nextMemorial = d.memorialInstances.find((m) => !m.completedAt) ?? null;
+        const totalCount = d.memorialInstances.length;
+        const completedCount = d.memorialInstances.filter((m) => m.completedAt).length;
+
+        return {
+          id: d.id,
+          nextMemorial,
+          totalCount,
+          completedCount,
+        };
+      });
+
+      return jsonResponse(summaryItems);
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
@@ -22,14 +65,26 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const deceased = await prisma.deceased.findMany({
-      where,
-      include: {
-        household: { select: { id: true, name: true } },
-        memorialInstances: { orderBy: { dueDate: "asc" } },
-      },
-      orderBy: { deathDate: "desc" },
-    });
+    const deceased = lite
+      ? await prisma.deceased.findMany({
+          where,
+          select: {
+            id: true,
+            lastName: true,
+            firstName: true,
+            posthumousName: true,
+            household: { select: { id: true, name: true } },
+          },
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        })
+      : await prisma.deceased.findMany({
+          where,
+          include: {
+            household: { select: { id: true, name: true } },
+            memorialInstances: { orderBy: { dueDate: "asc" } },
+          },
+          orderBy: { deathDate: "desc" },
+        });
 
     return jsonResponse(deceased);
   });
