@@ -1,0 +1,442 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum RoleName {
+  Admin
+  OfficeManager
+  Staff
+}
+
+enum HouseholdStatus {
+  active
+  inactive
+  withdrawn
+}
+
+enum ContactPriority {
+  postal
+  phone
+  email
+  line
+}
+
+enum EventType {
+  memorial
+  obon
+  higan
+  new_year
+  ceremony
+  other
+}
+
+enum EventStatus {
+  draft
+  scheduled
+  completed
+  cancelled
+}
+
+enum ParticipationStatus {
+  pending
+  accepted
+  declined
+  no_response
+}
+
+enum TransactionType {
+  ofuse
+  toba
+  other
+}
+
+enum TaskStatus {
+  open
+  in_progress
+  done
+  cancelled
+}
+
+enum TaskPriority {
+  high
+  medium
+  low
+}
+
+enum CommunicationMethod {
+  postal
+  phone
+  email
+  line
+}
+
+enum CommunicationDirection {
+  outbound
+  inbound
+}
+
+enum AuditAction {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+// ─── Roles & Users ───────────────────────────────────────
+
+model Role {
+  id        String   @id @default(cuid())
+  name      RoleName @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  roleId       String   @map("role_id")
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  email        String?  @unique
+  googleSub    String?  @unique @map("google_sub")
+  displayName  String   @map("display_name")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  role              Role               @relation(fields: [roleId], references: [id])
+  tasks             Task[]
+  communicationLogs CommunicationLog[]
+  auditLogs         AuditLog[]
+
+  @@index([roleId])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── Households ──────────────────────────────────────────
+
+model Household {
+  id              String          @id @default(cuid())
+  name            String
+  postalCode      String          @map("postal_code")
+  prefecture      String
+  city            String
+  addressLine1    String          @map("address_line1")
+  addressLine2    String?         @map("address_line2")
+  phoneNumber     String?         @map("phone_number")
+  email           String?
+  lineId          String?         @map("line_id")
+  lineAvailable   Boolean         @default(false) @map("line_available")
+  contactPriority ContactPriority @default(postal) @map("contact_priority")
+  status          HouseholdStatus @default(active)
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  members           HouseholdMember[]
+  graves            Grave[]
+  deceased          Deceased[]
+  eventTargets      EventTarget[]
+  eventParticipations EventParticipation[]
+  transactions      Transaction[]
+  tasks             Task[]
+  communicationLogs CommunicationLog[]
+
+  @@index([status])
+  @@index([contactPriority])
+  @@map("households")
+}
+
+// ─── Persons & Household Members ─────────────────────────
+
+model Person {
+  id        String    @id @default(cuid())
+  lastName  String    @map("last_name")
+  firstName String    @map("first_name")
+  lastNameKana  String? @map("last_name_kana")
+  firstNameKana String? @map("first_name_kana")
+  birthDate DateTime? @map("birth_date") @db.Date
+  phoneNumber String? @map("phone_number")
+  email     String?
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  householdMembers HouseholdMember[]
+
+  @@map("persons")
+}
+
+model HouseholdMember {
+  id          String   @id @default(cuid())
+  householdId String   @map("household_id")
+  personId    String   @map("person_id")
+  relation    String
+  isHead      Boolean  @default(false) @map("is_head")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  household Household @relation(fields: [householdId], references: [id])
+  person    Person    @relation(fields: [personId], references: [id])
+
+  @@unique([householdId, personId])
+  @@index([householdId])
+  @@index([personId])
+  @@map("household_members")
+}
+
+// ─── Graves ──────────────────────────────────────────────
+
+model Grave {
+  id          String   @id @default(cuid())
+  householdId String   @map("household_id")
+  section     String?
+  number      String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  @@index([householdId])
+  @@map("graves")
+}
+
+// ─── Deceased ────────────────────────────────────────────
+
+model Deceased {
+  id            String   @id @default(cuid())
+  householdId   String   @map("household_id")
+  lastName      String   @map("last_name")
+  firstName     String   @map("first_name")
+  lastNameKana  String?  @map("last_name_kana")
+  firstNameKana String?  @map("first_name_kana")
+  posthumousName String? @map("posthumous_name")
+  deathDate     DateTime @map("death_date") @db.Date
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  household          Household          @relation(fields: [householdId], references: [id])
+  memorialInstances  MemorialInstance[]
+  eventTargets       EventTarget[]
+  transactions       Transaction[]
+
+  @@index([householdId])
+  @@index([deathDate])
+  @@map("deceased")
+}
+
+// ─── Memorial Rules & Instances ──────────────────────────
+
+model MemorialRule {
+  id        String   @id @default(cuid())
+  name      String   @default("default")
+  yearsJson Json     @default("[1,3,7,13,17,23,27,33,50]") @map("years_json")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memorialInstances MemorialInstance[]
+
+  @@map("memorial_rules")
+}
+
+model MemorialInstance {
+  id              String    @id @default(cuid())
+  deceasedId      String    @map("deceased_id")
+  memorialRuleId  String    @map("memorial_rule_id")
+  year            Int
+  dueDate         DateTime  @map("due_date") @db.Date
+  eventId         String?   @map("event_id")
+  completedAt     DateTime? @map("completed_at")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  deceased     Deceased      @relation(fields: [deceasedId], references: [id])
+  memorialRule MemorialRule  @relation(fields: [memorialRuleId], references: [id])
+  event        Event?        @relation(fields: [eventId], references: [id])
+
+  @@unique([deceasedId, year])
+  @@index([dueDate])
+  @@index([deceasedId])
+  @@map("memorial_instances")
+}
+
+// ─── Events ──────────────────────────────────────────────
+
+model Event {
+  id          String      @id @default(cuid())
+  title       String
+  eventType   EventType   @map("event_type")
+  status      EventStatus @default(draft)
+  eventDate   DateTime    @map("event_date") @db.Date
+  venue       String?
+  description String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  memorialInstances  MemorialInstance[]
+  eventTargets       EventTarget[]
+  eventParticipations EventParticipation[]
+  transactions       Transaction[]
+
+  @@index([eventDate])
+  @@index([status])
+  @@map("events")
+}
+
+model EventTarget {
+  id          String   @id @default(cuid())
+  eventId     String   @map("event_id")
+  householdId String?  @map("household_id")
+  deceasedId  String?  @map("deceased_id")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  event     Event      @relation(fields: [eventId], references: [id])
+  household Household? @relation(fields: [householdId], references: [id])
+  deceased  Deceased?  @relation(fields: [deceasedId], references: [id])
+
+  @@index([eventId])
+  @@index([householdId])
+  @@index([deceasedId])
+  @@map("event_targets")
+}
+
+model EventParticipation {
+  id          String              @id @default(cuid())
+  eventId     String              @map("event_id")
+  householdId String              @map("household_id")
+  status      ParticipationStatus @default(pending)
+  tobaCount   Int                 @default(0) @map("toba_count")
+  attendees   Int                 @default(0)
+  notes       String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  event     Event     @relation(fields: [eventId], references: [id])
+  household Household @relation(fields: [householdId], references: [id])
+
+  @@unique([eventId, householdId])
+  @@index([eventId])
+  @@index([householdId])
+  @@map("event_participations")
+}
+
+// ─── Receipts & Transactions ─────────────────────────────
+
+model Receipt {
+  id          String   @id @default(cuid())
+  receiptNo   String   @unique @map("receipt_no")
+  issuedDate  DateTime @map("issued_date") @db.Date
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  transactions Transaction[]
+
+  @@map("receipts")
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  householdId   String?         @map("household_id")
+  eventId       String?         @map("event_id")
+  deceasedId    String?         @map("deceased_id")
+  receiptId     String?         @map("receipt_id")
+  type          TransactionType
+  amount        Int
+  transactionDate DateTime     @map("transaction_date") @db.Date
+  description   String?
+  notes         String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  household Household? @relation(fields: [householdId], references: [id])
+  event     Event?     @relation(fields: [eventId], references: [id])
+  deceased  Deceased?  @relation(fields: [deceasedId], references: [id])
+  receipt   Receipt?   @relation(fields: [receiptId], references: [id])
+
+  @@index([householdId])
+  @@index([eventId])
+  @@index([deceasedId])
+  @@index([transactionDate])
+  @@index([type])
+  @@map("transactions")
+}
+
+// ─── Tasks ───────────────────────────────────────────────
+
+model Task {
+  id          String       @id @default(cuid())
+  householdId String?      @map("household_id")
+  assigneeId  String?      @map("assignee_id")
+  title       String
+  description String?
+  status      TaskStatus   @default(open)
+  priority    TaskPriority @default(medium)
+  dueDate     DateTime?    @map("due_date") @db.Date
+  completedAt DateTime?    @map("completed_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  household Household? @relation(fields: [householdId], references: [id])
+  assignee  User?      @relation(fields: [assigneeId], references: [id])
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([assigneeId])
+  @@index([householdId])
+  @@map("tasks")
+}
+
+// ─── Communication Logs ──────────────────────────────────
+
+model CommunicationLog {
+  id          String                 @id @default(cuid())
+  householdId String                 @map("household_id")
+  userId      String?                @map("user_id")
+  method      CommunicationMethod
+  direction   CommunicationDirection
+  subject     String?
+  body        String?
+  sentAt      DateTime?              @map("sent_at")
+  notes       String?
+  createdAt   DateTime               @default(now()) @map("created_at")
+
+  household Household @relation(fields: [householdId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@index([householdId])
+  @@index([method])
+  @@map("communication_logs")
+}
+
+// ─── Audit Logs ──────────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?     @map("user_id")
+  tableName  String      @map("table_name")
+  recordId   String      @map("record_id")
+  action     AuditAction
+  before     Json?
+  after      Json?
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([tableName, recordId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
