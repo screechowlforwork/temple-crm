@@ -149,3 +149,18 @@ export const userAdminUpdateSchema = z
   .refine((data) => data.roleName !== undefined || data.isActive !== undefined, {
     message: "roleName または isActive のどちらかは必須です",
   });
+
+export const allowedGoogleEmailCreateSchema = z.object({
+  email: z.string().email("有効なメールアドレスを入力してください"),
+  note: z.string().max(200).optional(),
+});
+
+export const allowedGoogleEmailUpdateSchema = z
+  .object({
+    id: z.string().min(1, "IDは必須です"),
+    isActive: z.boolean().optional(),
+    note: z.string().max(200).optional(),
+  })
+  .refine((data) => data.isActive !== undefined || data.note !== undefined, {
+    message: "isActive または note のどちらかは必須です",
+  });

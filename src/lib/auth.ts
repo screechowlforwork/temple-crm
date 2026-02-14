@@ -27,16 +27,27 @@ export type SessionUser = {
   email?: string | null;
 };
 
-const ALLOWED_GOOGLE_EMAILS = (process.env.ALLOWED_GOOGLE_EMAILS ?? "")
+const ENV_ALLOWED_GOOGLE_EMAILS = (process.env.ALLOWED_GOOGLE_EMAILS ?? "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
 
-function isGoogleEmailAllowed(email: string): boolean {
-  if (ALLOWED_GOOGLE_EMAILS.length === 0) {
+async function isGoogleEmailAllowed(email: string): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase();
+
+  const allowlistRecord = await prisma.allowedGoogleEmail.findUnique({
+    where: { email: normalizedEmail },
+    select: { isActive: true },
+  });
+  if (allowlistRecord) {
+    return allowlistRecord.isActive;
+  }
+
+  if (ENV_ALLOWED_GOOGLE_EMAILS.length === 0) {
     return false;
   }
-  return ALLOWED_GOOGLE_EMAILS.includes(email.toLowerCase());
+
+  return ENV_ALLOWED_GOOGLE_EMAILS.includes(normalizedEmail);
 }
 
 async function buildSessionUser(user: {
@@ -161,7 +172,7 @@ const authConfig: NextAuthConfig = {
         });
         return false;
       }
-      if (!isGoogleEmailAllowed(email)) {
+      if (!(await isGoogleEmailAllowed(email))) {
         console.warn("[auth] google sign-in denied: email not in allowlist", { email });
         return false;
       }

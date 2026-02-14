@@ -14,6 +14,7 @@ Copy `.env.example` to `.env` and set values:
 
 ```bash
 DATABASE_URL="postgresql://..."
+DIRECT_URL="postgresql://..."
 JWT_SECRET="..."
 NEXTAUTH_SECRET="..."
 GOOGLE_CLIENT_ID="..."
@@ -94,6 +95,7 @@ Example production domain used in this checklist:
 - [ ] Set Framework preset to Next.js.
 - [ ] Configure Environment Variables (Production):
   - [ ] `DATABASE_URL`
+  - [ ] `DIRECT_URL`
   - [ ] `NEXTAUTH_URL` = `https://temple-crm.vercel.app`
   - [ ] `NEXTAUTH_SECRET`
   - [ ] `GOOGLE_CLIENT_ID`

@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ───────────────────────────────────────────────
@@ -116,10 +117,27 @@ model User {
   tasks             Task[]
   communicationLogs CommunicationLog[]
   auditLogs         AuditLog[]
+  allowedGoogleEmailsCreated AllowedGoogleEmail[] @relation("AllowedGoogleEmailCreatedBy")
 
   @@index([roleId])
   @@index([email])
   @@map("users")
+}
+
+model AllowedGoogleEmail {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  note            String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdByUser User? @relation("AllowedGoogleEmailCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([isActive])
+  @@index([createdByUserId])
+  @@map("allowed_google_emails")
 }
 
 // ─── Households ──────────────────────────────────────────
