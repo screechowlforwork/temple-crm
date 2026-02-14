@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
             lastName: true,
             firstName: true,
             posthumousName: true,
+            deathDate: true,
             household: { select: { id: true, name: true } },
           },
           orderBy: [{ lastName: "asc" }, { firstName: "asc" }],

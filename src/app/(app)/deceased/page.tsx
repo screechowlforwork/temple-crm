@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-client";
 import Link from "next/link";
 import { format, differenceInDays } from "date-fns";
@@ -9,34 +9,97 @@ import { Plus, Search, X } from "lucide-react";
 import ComboBox from "@/components/ComboBox";
 import { useHouseholdOptions } from "@/lib/use-options";
 
-type DeceasedItem = {
+type MemorialSummary = {
+  id: string;
+  year: number;
+  dueDate: string;
+  completedAt: string | null;
+};
+
+type DeceasedLiteItem = {
   id: string;
   lastName: string;
   firstName: string;
   posthumousName: string | null;
   deathDate: string;
   household: { id: string; name: string } | null;
-  memorialInstances: { id: string; year: number; dueDate: string; completedAt: string | null }[];
+};
+
+type DeceasedSummaryItem = {
+  id: string;
+  nextMemorial: MemorialSummary | null;
+  totalCount: number;
+  completedCount: number;
+};
+
+type DeceasedListItem = DeceasedLiteItem & {
+  nextMemorial: MemorialSummary | null;
+  totalCount: number;
+  completedCount: number;
 };
 
 export default function DeceasedListPage() {
-  const [list, setList] = useState<DeceasedItem[]>([]);
+  const [list, setList] = useState<DeceasedListItem[]>([]);
   const [q, setQ] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const requestSeq = useRef(0);
 
-  const load = useCallback(() => {
+  const load = useCallback(async (query: string) => {
+    requestSeq.current += 1;
+    const reqId = requestSeq.current;
+
     const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    api.get<DeceasedItem[]>(`/api/deceased?${params}`).then(setList).catch(console.error);
-  }, [q]);
+    params.set("lite", "1");
+    if (query) params.set("q", query);
+
+    try {
+      const liteRows = await api.get<DeceasedLiteItem[]>(`/api/deceased?${params}`);
+      if (reqId !== requestSeq.current) return;
+
+      const baseRows: DeceasedListItem[] = liteRows.map((item) => ({
+        ...item,
+        nextMemorial: null,
+        totalCount: 0,
+        completedCount: 0,
+      }));
+      setList(baseRows);
+
+      if (liteRows.length === 0) return;
+
+      const ids = liteRows.map((d) => d.id).join(",");
+      const summaryRows = await api.get<DeceasedSummaryItem[]>(
+        `/api/deceased?summary=1&ids=${encodeURIComponent(ids)}`
+      );
+      if (reqId !== requestSeq.current) return;
+
+      const summaryMap = new Map(summaryRows.map((item) => [item.id, item]));
+      setList((prev) =>
+        prev.map((item) => {
+          const summary = summaryMap.get(item.id);
+          if (!summary) return item;
+          return {
+            ...item,
+            nextMemorial: summary.nextMemorial,
+            totalCount: summary.totalCount,
+            completedCount: summary.completedCount,
+          };
+        })
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(() => {
+      void load("");
+    }, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    load();
+    load(q);
   };
 
   const today = new Date();
@@ -60,7 +123,7 @@ export default function DeceasedListPage() {
         <DeceasedCreateForm
           onCreated={() => {
             setShowCreateForm(false);
-            load();
+            load(q);
           }}
           onCancel={() => setShowCreateForm(false)}
         />
@@ -85,7 +148,7 @@ export default function DeceasedListPage() {
       <div className="space-y-2">
         {list.length === 0 && <div className="rounded-xl border bg-white p-10 text-center text-base text-gray-400">故人がいません</div>}
         {list.map((d) => {
-          const nextMemorial = d.memorialInstances.find((m) => !m.completedAt);
+          const nextMemorial = d.nextMemorial;
           const daysLeft = nextMemorial ? differenceInDays(new Date(nextMemorial.dueDate), today) : null;
 
           return (
@@ -123,9 +186,9 @@ export default function DeceasedListPage() {
               <div className="mt-1.5 flex items-center gap-4 text-sm text-gray-500">
                 <span>没 {format(new Date(d.deathDate), "yyyy年M月d日", { locale: ja })}</span>
                 {d.household && <span className="text-indigo-500">{d.household.name}</span>}
-                {d.memorialInstances.length > 0 && (
+                {d.totalCount > 0 && (
                   <span className="text-gray-400">
-                    年忌 {d.memorialInstances.filter((m) => m.completedAt).length}/{d.memorialInstances.length} 完了
+                    年忌 {d.completedCount}/{d.totalCount} 完了
                   </span>
                 )}
               </div>
